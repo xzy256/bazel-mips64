@@ -1,0 +1,237 @@
+// Copyright 2016 The Bazel Authors. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+package com.google.devtools.build.lib.skyframe;
+
+import com.google.common.base.Function;
+import com.google.common.base.MoreObjects;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Iterables;
+import com.google.common.collect.Maps;
+import com.google.devtools.build.lib.actions.Artifact;
+import com.google.devtools.build.lib.actions.Artifact.TreeFileArtifact;
+import com.google.devtools.build.lib.actions.cache.DigestUtils;
+import com.google.devtools.build.lib.actions.cache.Metadata;
+import com.google.devtools.build.lib.vfs.Path;
+import com.google.devtools.build.lib.vfs.PathFragment;
+import com.google.devtools.build.skyframe.SkyValue;
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.Map;
+import java.util.Set;
+import javax.annotation.Nullable;
+
+/**
+ * Value for TreeArtifacts, which contains a digest and the {@link FileArtifactValue}s of its child
+ * {@link TreeFileArtifact}s.
+ */
+class TreeArtifactValue implements SkyValue {
+  private static final Function<Artifact, PathFragment> PARENT_RELATIVE_PATHS =
+      new Function<Artifact, PathFragment>() {
+        @Override
+        public PathFragment apply(Artifact artifact) {
+            return artifact.getParentRelativePath();
+        }
+      };
+
+  private final byte[] digest;
+  private final Map<TreeFileArtifact, FileArtifactValue> childData;
+
+  private TreeArtifactValue(byte[] digest, Map<TreeFileArtifact, FileArtifactValue> childData) {
+    this.digest = digest;
+    this.childData = ImmutableMap.copyOf(childData);
+  }
+
+  /**
+   * Returns a TreeArtifactValue out of the given Artifact-relative path fragments
+   * and their corresponding FileArtifactValues.
+   */
+  static TreeArtifactValue create(Map<TreeFileArtifact, FileArtifactValue> childFileValues) {
+    Map<String, Metadata> digestBuilder =
+        Maps.newHashMapWithExpectedSize(childFileValues.size());
+    for (Map.Entry<TreeFileArtifact, FileArtifactValue> e : childFileValues.entrySet()) {
+      digestBuilder.put(
+          e.getKey().getParentRelativePath().getPathString(),
+          new Metadata(e.getValue().getDigest()));
+    }
+
+    return new TreeArtifactValue(
+        DigestUtils.fromMetadata(digestBuilder).getDigestBytesUnsafe(),
+        ImmutableMap.copyOf(childFileValues));
+  }
+
+  FileArtifactValue getSelfData() {
+    return FileArtifactValue.createProxy(digest);
+  }
+
+  Metadata getMetadata() {
+    return new Metadata(digest.clone());
+  }
+
+  Set<PathFragment> getChildPaths() {
+    return ImmutableSet.copyOf(Iterables.transform(childData.keySet(), PARENT_RELATIVE_PATHS));
+  }
+
+  @Nullable
+  byte[] getDigest() {
+    return digest.clone();
+  }
+
+  Iterable<TreeFileArtifact> getChildren() {
+    return childData.keySet();
+  }
+
+  Map<TreeFileArtifact, FileArtifactValue> getChildValues() {
+    return childData;
+  }
+
+  @Override
+  public int hashCode() {
+    return Arrays.hashCode(digest);
+  }
+
+  @Override
+  public boolean equals(Object other) {
+    if (this == other) {
+      return true;
+    }
+
+    if (!(other instanceof TreeArtifactValue)) {
+      return false;
+    }
+
+    TreeArtifactValue that = (TreeArtifactValue) other;
+    if (!Arrays.equals(digest, that.digest)) {
+      return false;
+    }
+
+    return childData.equals(that.childData);
+  }
+
+  @Override
+  public String toString() {
+    return MoreObjects.toStringHelper(TreeArtifactValue.class)
+        .add("digest", digest)
+        .add("childData", childData)
+        .toString();
+  }
+
+  /**
+   * A TreeArtifactValue that represents a missing TreeArtifact.
+   * This is occasionally useful because Java's concurrent collections disallow null members.
+   */
+  static final TreeArtifactValue MISSING_TREE_ARTIFACT = new TreeArtifactValue(null,
+      ImmutableMap.<TreeFileArtifact, FileArtifactValue>of()) {
+    @Override
+    FileArtifactValue getSelfData() {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    Iterable<TreeFileArtifact> getChildren() {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    Map<TreeFileArtifact, FileArtifactValue> getChildValues() {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    Metadata getMetadata() {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    Set<PathFragment> getChildPaths() {
+      throw new UnsupportedOperationException();
+    }
+
+    @Nullable
+    @Override
+    byte[] getDigest() {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public int hashCode() {
+      return 24; // my favorite number
+    }
+
+    @Override
+    public boolean equals(Object other) {
+      return this == other;
+    }
+
+    @Override
+    public String toString() {
+      return "MISSING_TREE_ARTIFACT";
+    }
+  };
+
+  private static void explodeDirectory(Artifact treeArtifact,
+      PathFragment pathToExplode, ImmutableSet.Builder<PathFragment> valuesBuilder)
+      throws IOException {
+    for (Path subpath : treeArtifact.getPath().getRelative(pathToExplode).getDirectoryEntries()) {
+      PathFragment canonicalSubpathFragment =
+          pathToExplode.getChild(subpath.getBaseName()).normalize();
+      if (subpath.isDirectory()) {
+        explodeDirectory(treeArtifact,
+            pathToExplode.getChild(subpath.getBaseName()), valuesBuilder);
+      } else if (subpath.isSymbolicLink()) {
+        PathFragment linkTarget = subpath.readSymbolicLinkUnchecked();
+        valuesBuilder.add(canonicalSubpathFragment);
+        if (linkTarget.isAbsolute()) {
+          // We tolerate absolute symlinks here. They will probably be dangling if any downstream
+          // consumer tries to read them, but let that be downstream's problem.
+          continue;
+        }
+        // We visit each path segment of the link target to catch any path traversal outside of the
+        // TreeArtifact root directory. For example, for TreeArtifact a/b/c, it is possible to have
+        // a symlink, a/b/c/sym_link that points to ../outside_dir/../c/link_target. Although this
+        // symlink points to a file under the TreeArtifact, the link target traverses outside of the
+        // TreeArtifact into a/b/outside_dir.
+        PathFragment intermediatePath = canonicalSubpathFragment.getParentDirectory();
+        for (String pathSegment : linkTarget.getSegments()) {
+          intermediatePath = intermediatePath.getRelative(pathSegment).normalize();
+          if (intermediatePath.containsUplevelReferences()) {
+            String errorMessage = String.format(
+                "A TreeArtifact may not contain relative symlinks whose target paths traverse "
+                + "outside of the TreeArtifact, found %s pointing to %s.",
+                subpath,
+                linkTarget);
+            throw new IOException(errorMessage);
+          }
+        }
+      } else if (subpath.isFile()) {
+        valuesBuilder.add(canonicalSubpathFragment);
+      } else {
+        // We shouldn't ever reach here.
+        throw new IllegalStateException("Could not determine type of file " + subpath);
+      }
+    }
+  }
+
+  /**
+   * Recursively get all child files in a directory
+   * (excluding child directories themselves, but including all files in them).
+   * @throws IOException if there is any problem reading or validating outputs under the given
+   *     tree artifact.
+   */
+  static Set<PathFragment> explodeDirectory(Artifact treeArtifact) throws IOException {
+    ImmutableSet.Builder<PathFragment> explodedDirectory = ImmutableSet.builder();
+    explodeDirectory(treeArtifact, PathFragment.EMPTY_FRAGMENT, explodedDirectory);
+    return explodedDirectory.build();
+  }
+}

@@ -1,0 +1,14 @@
+package(default_visibility = ["//visibility:public"])
+
+java_import(
+    name = "classes",
+    jars = [":classes_deploy.jar"],
+)
+
+java_binary(
+    name = "ResourceProcessorBusyBox",
+    main_class = "com.google.devtools.build.android.ResourceProcessorBusyBox",
+    runtime_deps = [
+        ":classes",
+    ],
+)
