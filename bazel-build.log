@@ -1,0 +1,169 @@
+
+export PROTOC=/usr/local/bin/protoc
+export OS=linux
+export ARCH=mips64el
+export JAVA_HOME="/opt/j2sdk-image"
+export JRE_HOME=${JAVA_HOME}/jre
+export CLASSPATH=.:${JAVA_HOME}/lib:${JRE_HOME}/lib
+export PATH=${JAVA_HOME}/bin:/usr/local/bin/:$PATH
+export JAVA_OPTS="-server -Xms2048m -Xmx2048m"
+
+1.下载zip包，不要使用git clone，否则少了许多文件
+wget https://github.com/bazelbuild/bazel/archive/0.4.5.zip
+2.新建文件夹，解压
+mkdir bazel-0.4.5
+cp $DOWNLOAD/bazel-0.4.5-dist.zip bazel-0.4.5
+cd bazel-0.4.5
+unzip bazel-0.4.5-dist.zip
+
+------------------------------0.4.5------------------------------------------------
+[root@localhost bazel]# bash ./compile.sh 
+INFO: You can skip this first step by providing a path to the bazel binary as second argument:
+INFO:    ./compile.sh compile /path/to/bazel
+🍃  Building Bazel from scratch
+ERROR: Must specify PROTOC if not bootstrapping from the distribution artifact
+
+---->编译protobuf,地址https://github.com/google/protobuf/（查看bazel目录里third-parts/protobuf依赖的版本）
+并设置/etc/profile环境变量 export PROTOC=/usr/bin/protoc，即可
+
+参考这里面提到的解决办法
+https://bazel.build/designs/2016/10/11/distribution-artifact.html
+
+
+[root@localhost bazel]# bash ./compile.sh 
+INFO: You can skip this first step by providing a path to the bazel binary as second argument:
+INFO:    ./compile.sh compile /path/to/bazel
+🍃  Building Bazel from scratch
+ERROR: Must specify GRPC_JAVA_PLUGIN if not bootstrapping from the distribution artifact
+---->去github下载zip包，不要使用git clone(缺少protocbuf项目文件)
+
+bash ./compile.sh
+
+	[root@localhost bazel-0.4.5]# bash ./compile.sh
+	INFO: You can skip this first step by providing a path to the bazel binary as second argument:
+	INFO:    ./compile.sh compile /path/to/bazel
+	🍃  Building Bazel from scratch.......
+	🍃  Building Bazel with Bazel.
+	.WARNING: /tmp/bazel_WQ0HELiG/out/external/bazel_tools/WORKSPACE:1: Workspace name in /tmp/bazel_WQ0HELiG/out/external/bazel_tools/WORKSPACE (@io_bazel) 
+	does not match the name given in the repository's definition (@bazel_tools); this will cause a build error in future versions.
+	ERROR: No toolchain found for cpu 'unknown'. Valid cpus are: [
+	  piii,
+	  armeabi-v7a,
+	  x64_windows_msvc,
+	  s390x,
+	  ios_x86_64,
+	].
+	INFO: Elapsed time: 9.010s
+
+	ERROR: Could not build Bazel
+
+-----> 修改见patch  https://github.com/xzy256/bazel-mips64el/blob/master/1.patch
+还是cpu=unknown,原因是src/main/java/com/google/devtools/build/lib/rules/cpp/CrosstoolConfigurationLoader.java +333
+333     String desiredCpu = cpuTransformer.apply(config.getCpu());
+desiredCpu==unknown的cpu,而config.getCpu()来自
+300     CrosstoolConfigurationIdentifier config =CrosstoolConfigurationIdentifier.fromOptions(options);
+追踪options，它是BuildOptions对象的实例./src/main/java/com/google/devtools/build/lib/analysis/config/BuildOptions.java
+public final class BuildOptions implements Cloneable, Serializable
+ 
+
+ERROR: /home/loongson/??/bazel-0.4.5/src/main/tools/BUILD:3:1: Linking of rule '//src/main/tools:process-wrapper' failed: gcc failed: error executing command 
+  (cd /tmp/bazel_1pNZuCmW/out/execroot/bazel-0.4.5 && \
+  exec env - \
+    PATH=/lib/jvm/java-1.8.0-openjdk-1.8.0.25-6.b17.rc21.fc21.loongson.mips64el/bin:/usr/local/bin/:/lib/jvm/java-1.8.0-openjdk-1.8.0.25-6.b17.rc21.fc21.loongson.mips64el/bin:/usr/local/bin/:/usr/lib64/ccache:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/home/loongson/.local/bin:/home/loongson/bin \
+  /usr/lib64/ccache/gcc -o bazel-out/local-opt/bin/src/main/tools/process-wrapper -Wl,-no-as-needed -Wl,-z,relro,-z,now -B/usr/lib64/ccache -B/usr/bin '-Wl,--build-id=md5' '-Wl,--hash-style=gnu' -pass-exit-codes -Wl,--gc-sections -Wl,@bazel-out/local-opt/bin/src/main/tools/process-wrapper-2.params): com.google.devtools.build.lib.shell.BadExitStatusException: Process exited with status 1.
+/usr/bin/ld: .gnu.hash is incompatible with the MIPS ABI
+collect2: error: ld returned 1 exit status
+Target //src:bazel failed to build
+INFO: Elapsed time: 76.139s, Critical Path: 38.71s
++ fail 'Could not build Bazel'
++ local exitCode=1
++ [[ 1 = \0 ]]
++ echo
+
++ echo 'ERROR: Could not build Bazel'
+ERROR: Could not build Bazel
++ exit 1
+
+---->将编译参数  “-Wl,--hash-style=gnu” 改成 “-Wl,--hash-style=sysv” ，这个参数需要ld的版本是2.17以上的
+
+ERROR: /home/loongson/bazel-0.4.5/src/java_tools/singlejar/BUILD:77:1: error executing shell command: 'set -e;rm -rf bazel-out/host/bin/src/java_tools/singlejar/bootstrap_deploy.jar.build_output;mkdir bazel-out/host/bin/src/java_tools/singlejar/bootstrap_deploy.jar.build_output
+unzip -qn bazel-out/h...' failed: bash failed: error executing command 
+  (cd /tmp/bazel_txTOolZy/out/execroot/bazel-0.4.5 && \
+  exec env - \
+    PATH=/lib/jvm/java-1.8.0-openjdk-1.8.0.25-6.b17.rc21.fc21.loongson.mips64el/bin:/usr/local/bin/:/lib/jvm/java-1.8.0-openjdk-1.8.0.25-6.b17.rc21.fc21.loongson.mips64el/bin:/usr/local/bin/:/usr/lib64/ccache:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/home/loongson/.local/bin:/home/loongson/bin \
+  /bin/bash -c 'set -e;rm -rf bazel-out/host/bin/src/java_tools/singlejar/bootstrap_deploy.jar.build_output;mkdir bazel-out/host/bin/src/java_tools/singlejar/bootstrap_deploy.jar.build_output
+unzip -qn bazel-out/host/bin/src/java_tools/singlejar/libbootstrap.jar -d bazel-out/host/bin/src/java_tools/singlejar/bootstrap_deploy.jar.build_output
+unzip -qn bazel-out/host/bin/src/java_tools/singlejar/libskylark-deps.jar -d bazel-out/host/bin/src/java_tools/singlejar/bootstrap_deploy.jar.build_output
+unzip -qn third_party/auto/auto-common-0.3.jar -d bazel-out/host/bin/src/java_tools/singlejar/bootstrap_deploy.jar.build_output
+unzip -qn third_party/error_prone/error_prone_annotation-2.0.18.jar -d bazel-out/host/bin/src/java_tools/singlejar/bootstrap_deploy.jar.build_output
+unzip -qn third_party/error_prone/error_prone_annotations-2.0.18.jar -d bazel-out/host/bin/src/java_tools/singlejar/bootstrap_deploy.jar.build_output
+unzip -qn third_party/error_prone/error_prone_check_api-2.0.18.jar -d bazel-out/host/bin/src/java_tools/singlejar/bootstrap_deploy.jar.build_output
+unzip -qn third_party/error_prone/error_prone_core-2.0.18.jar -d bazel-out/host/bin/src/java_tools/singlejar/bootstrap_deploy.jar.build_output
+unzip -qn third_party/guava/guava-21.0.jar -d bazel-out/host/bin/src/java_tools/singlejar/bootstrap_deploy.jar.build_output
+unzip -qn third_party/jcip_annotations/jcip-annotations-1.0-1.jar -d bazel-out/host/bin/src/java_tools/singlejar/bootstrap_deploy.jar.build_output
+unzip -qn third_party/jsr305/jsr-305.jar -d bazel-out/host/bin/src/java_tools/singlejar/bootstrap_deploy.jar.build_output
+unzip -qn third_party/pcollections/pcollections-2.1.2.jar -d bazel-out/host/bin/src/java_tools/singlejar/bootstrap_deploy.jar.build_output
+unzip -qn bazel-out/host/bin/third_party/checker_framework_dataflow/libbootstrap.jar -d bazel-out/host/bin/src/java_tools/singlejar/bootstrap_deploy.jar.build_output
+unzip -qn bazel-out/host/bin/third_party/jformatstring/libbootstrap.jar -d bazel-out/host/bin/src/java_tools/singlejar/bootstrap_deploy.jar.build_output
+unzip -qn bazel-out/host/bin/src/main/java/com/google/devtools/build/lib/libshell-skylark.jar -d bazel-out/host/bin/src/java_tools/singlejar/bootstrap_deploy.jar.build_output
+external/local_jdk/bin/jar cmf bazel-out/host/bin/src/java_tools/singlejar/bootstrap_MANIFEST.MF bazel-out/host/bin/src/java_tools/singlejar/bootstrap_deploy.jar -C bazel-out/host/bin/src/java_tools/singlejar/bootstrap_deploy.jar.build_output .
+touch bazel-out/host/bin/src/java_tools/singlejar/bootstrap_deploy.jar.build_output
+'): com.google.devtools.build.lib.shell.BadExitStatusException: Process exited with status 50.
+???????
+ERROR: I/O error while writing action log: ???????.
+Target //src:bazel failed to build
+---->如果有自己加入的System.out.println调试信息，删除再编译试试，不行的话换0.5.0的版本(具体解决方案有点忘了)
+--------------------------------------0.5.0rc9-------------------------------------------------
+ERROR: /tmp/bazel-0.5.0rc9/src/main/cpp/BUILD:74:1: Linking of rule '//src/main/cpp:client' failed: gcc failed: error executing command 
+  (cd /tmp/bazel_praBgfrP/out/execroot/bazel-0.5.0rc9 && \
+  exec env - \
+    PATH=/opt/j2sdk-image/bin:/usr/local/bin/:/usr/lib64/ccache:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/home/xzy/.local/bin:/home/xzy/bin \
+    PWD=/proc/self/cwd \
+  /usr/lib64/ccache/gcc -o bazel-out/local-opt/bin/src/main/cpp/client -Wl,-no-as-needed -Wl,-z,relro,-z,now -B/usr/lib64/ccache -B/usr/bin -pass-exit-codes -Wl,--gc-sections -Wl,@bazel-out/local-opt/bin/src/main/cpp/client-2.params): com.google.devtools.build.lib.shell.BadExitStatusException: Process exited with status 1.
+/usr/bin/ld: bazel-out/local-opt/bin/src/main/cpp/libblaze_util.a(blaze_util_posix.o): bad reloc symbol index (0x64656966 >= 0xfe) for offset 0x7c in section `.text._ZN5blaze15IsEmacsTerminalEv'
+bazel-out/local-opt/bin/src/main/cpp/libblaze_util.a: error adding symbols: Bad value
+collect2: error: ld returned 1 exit status
+Target //src:bazel failed to build
+INFO: Elapsed time: 94.959s, Critical Path: 34.58s
+---->将gcc的路径加入到PATH里面去即可
+
+ERROR: /tmp/bazel-0.5.0rc9/src/main/protobuf/BUILD:24:2: Building src/main/protobuf/libpackage_manifest_java_proto.jar (1 source jar) failed: Worker process returned an unparseable WorkResponse:
+
+---8<---8<--- Exception details ---8<---8<---
+com.google.protobuf.InvalidProtocolBufferException: While parsing a protocol message, the input ended unexpectedly in the middle of a field.  This could mean either that the input has been truncated or that an embedded message misreported its own length.
+
+
+
+-----------------------------------------0.5.0----------------------------------------------
+ERROR: /home/xzy/test/src/main/java/com/google/devtools/build/lib/BUILD:771:1: Building src/main/java/com/google/devtools/build/lib/libmaven-connector.jar (1 source file) failed: Worker process returned an unparseable WorkResponse:
+
+---8<---8<--- Exception details ---8<---8<---
+com.google.protobuf.InvalidProtocolBufferException: While parsing a protocol message, the input ended unexpectedly in the middle of a field.  This could mean either that the input has been truncated or that an embedded message misreported its own length.
+---->再次执行编译命令
+ERROR: /home/xzy/test/src/tools/android/java/com/google/devtools/build/android/BUILD:16:1: Building src/tools/android/java/com/google/devtools/build/android/classes.jar () failed: Worker process returned an unparseable WorkResponse:
+
+---8<---8<--- Exception details ---8<---8<---
+com.google.protobuf.InvalidProtocolBufferException: While parsing a protocol message, the input ended unexpectedly in the middle of a field.  This could mean either that the input has been truncated or that an embedded message misreported its own length.
+
+ERROR: /home/xzy/test/src/main/java/com/google/devtools/build/lib/buildeventstream/proto/BUILD:10:1: Building src/main/java/com/google/devtools/build/lib/buildeventstream/proto/libbuild_event_stream_java_proto.jar (1 source jar) failed: Worker process returned an unparseable WorkResponse
+
+ERROR: /home/xzy/test/third_party/java/aosp_gradle_core/BUILD:12:1: Building third_party/java/aosp_gradle_core/libaosp_gradle_core.jar (1 source file) failed: Worker process returned an unparseable WorkResponse:
+
+---8<---8<--- Exception details ---8<---8<---
+com.google.protobuf.InvalidProtocolBufferException: While parsing a protocol message, the input ended unexpectedly in the middle of a field.  This could mean either that the input has been truncated or that an embedded message misreported its own length.
+
+ERROR: /home/xzy/test/src/main/java/com/google/devtools/build/lib/BUILD:1205:1: Building src/main/java/com/google/devtools/build/lib/bazel/BazelServer.jar () failed: Worker process returned an unparseable WorkResponse:
+
+---8<---8<--- Exception details ---8<---8<---
+com.google.protobuf.InvalidProtocolBufferException: While parsing a protocol message, the input ended unexpectedly in the middle of a field.  This could mean either that the input has been truncated or that an embedded message misreported its own length
+---->修改scripts/bootstrap/bootstrap.sh 按照https://svnweb.freebsd.org/ports/head/devel/bazel/files/patch-scripts_bootstrap_bootstrap.sh?revision=436446&view=markup
+
+ERROR: /home/xzy/test/src/main/java/com/google/devtools/build/lib/BUILD:277:1: Building src/main/java/com/google/devtools/build/lib/libsingle-line-formatter.jar (1 source file) failed: java failed: error executing command 
+  (cd /tmp/bazel_5yLwBSLV/out/execroot/test && \
+  exec env - \
+    LC_CTYPE=en_US.UTF-8 \
+  /opt/j2sdk-image/bin/java -Xbootclasspath/p:third_party/java/jdk/langtools/javac-9-dev-r4023-2.jar -XX:+TieredCompilation '-XX:TieredStopAtLevel=1' -jar bazel-out/host/bin/src/java_tools/buildjar/java/com/google/devtools/build/buildjar/bootstrap_deploy.jar @bazel-out/local-opt/bin/src/main/java/com/google/devtools/build/lib/libsingle-line-formatter.jar-2.params): com.google.devtools.build.lib.shell.AbnormalTerminationException: Process terminated by signal 11.
+---->jvm不支持TieredCompilation，注释即可
+
+
+
