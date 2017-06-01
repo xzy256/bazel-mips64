@@ -1,3 +1,4 @@
+#instruction
 This project is from https://github.com/bazelbuild/bazel/. 
 In order to build for mips64 arch, you must add mips64 arch surpport.
 patch   build-bazel-mips.patch 
@@ -6,7 +7,7 @@ build log  bazel-build.log
 
 
 
-# [Bazel](http://bazel.build) ([Beta](http://bazel.build/roadmap.html#beta))
+[Bazel](http://bazel.build) ([Beta](http://bazel.build/roadmap.html#beta))
 
 *{Fast, Correct} - Choose two*
 
