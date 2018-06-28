@@ -2,9 +2,9 @@
 
 This project is from https://github.com/bazelbuild/bazel/. <br>
 In order to build for mips64 arch, you must add mips64 arch surpport.<br>
-patch   build-bazel-mips.patch <br>
-build successful output bazel-build-successful-output.txt<br>
-build log  bazel-build.log<br>
+patch   `build-bazel-mips.patch` <br>
+build successful output `bazel-build-successful-output.txt`<br>
+build log  `bazel-build.log`<br>
 
 
 
